@@ -17,11 +17,11 @@ tail -f logs/system.log
 
 Check the status of Cassandra:
 ```
-$ bin/nodetool status
+$ nodetool status
 ```
 The status column in the output should report UN which stands for "Up/Normal".
 
 Alternatively, connect to the database with:
 ```
-$ bin/cqlsh
+$ cqlsh
 ```
