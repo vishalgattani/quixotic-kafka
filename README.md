@@ -1,9 +1,9 @@
 # quixotic-kafka
 Python Stream Processing for Apache Kafka.
 
-# Why do I need this? 
+# Why do I need this?
 
-Currently, I have a Unity-ROS simulation setup in a docker container. I am wanting to learn how to publish ROS topic data into a structured streaming pipeline by building an architecture that includes a data source (my Unity-ROS simulation) and  to collect data without any loss, analyze them and store results in a database. 
+Currently, I have a Unity-ROS simulation setup in a docker container. I am wanting to learn how to publish ROS topic data into a structured streaming pipeline by building an architecture that includes a data source (my Unity-ROS simulation) and  to collect data without any loss, analyze them and store results in a database.
 
 I am thinking something along the lines of the following diagram. I shall utilize ROS (Robot Operating System) as a data provider, Kafka as a message queue, Apache Spark as a data processing engine and Apache Cassandra as a database.
 
@@ -20,11 +20,43 @@ flowchart LR
     ros --> kafka
 ```
 
-Also, it would be fun to setup a structured streaming pipeline without having to deal with unnecessary headers involved with ROS simulation. 
+Also, it would be fun to setup a structured streaming pipeline without having to deal with unnecessary headers involved with ROS simulation.
 
 # Setup
 
-Firstly, I have my ROS simulation up and running in a docker. I would want to publish the rostopic data into Kafka (producer). Then I would setup a way to fetch the data from Kafka (consumer).  
+Firstly, I have my ROS simulation up and running in a docker. I would want to publish the rostopic data into Kafka (producer). Then I would setup a way to fetch the data from Kafka (consumer).
+
+Setup kafka console on the host machine using the [Quix CLI](https://quix.io/docs/quix-cli/cli-quickstart.html)
+
+```sh
+curl -fsSL https://github.com/quixio/quix-cli/raw/main/install.sh | bash
+```
+
+To verify you have the dependencies installed, run the following command:
+
+```sh
+quix status
+```
+View the output carefully to confirm you have Git and Docker installed:
+```
+✗ Not logged in
+  User:                       ! Not logged in to Quix Cloud
+  Current context:            default (https://portal-api.platform.quix.io)
+  Default environment:        ! Not set
+  SDK Broker configuration:   Local (localhost:19092)
+! Local Pipeline Status:      Not Running
+✓ Local Broker Status:        Running (localhost:19092)
+✓ Local Broker GUI:           Running (http://localhost:8080)
+✓ Docker detected
+✓ Git detected
+  Git Root:                   /home/vishal/mygithub/quixotic-kafka
+```
+
+The following command will create the right docker compose file such that you have a broker running on localhost:19092 and you do not have to worry about setting up the environment variables and the configuration.
+```sh
+quix pipeline up
+```
+
 
 
 ## Connectivity issues
@@ -33,7 +65,7 @@ Firstly, I have my ROS simulation up and running in a docker. I would want to pu
 
 ```sh
 vishal@vishal:~/mygithub/quixotic-kafka$ hostname -I
-10.0.0.82 172.19.0.1 172.17.0.1 172.18.0.1 2601:14b:4501:7440::edf4 2601:14b:4501:7440:81b8:80f:ecf5:86a2 2601:14b:4501:7440:a97a:5401:b552:cbec 
+10.0.0.82 172.19.0.1 172.17.0.1 172.18.0.1 2601:14b:4501:7440::edf4 2601:14b:4501:7440:81b8:80f:ecf5:86a2 2601:14b:4501:7440:a97a:5401:b552:cbec
 ```
 
 I will setup a bash script to setup the `HOST_IP` environment variable and start up the docker compose.
@@ -89,17 +121,17 @@ networks:
     external: true
 ```
 
-My kafka and zookeeper are on `my_ros_network`. However, my ROS docker container is using `host` network. 
+My kafka and zookeeper are on `my_ros_network`. However, my ROS docker container is using `host` network.
 
-2. Next, my ROS docker container needs to connect to the kafka and zookeeper containers. 
+2. Next, my ROS docker container needs to connect to the kafka and zookeeper containers.
 
 
 ```sh
-vishal@vishal:~$ catkin-docker run 
+vishal@vishal:~$ catkin-docker run
 55c0ca9f980ef2553d78664ef64659545619c36894a32c3a8b91609c1df4d9bf
 vishal@vishal:~$ docker exec -it 55c0ca9f980ef2553d78664ef64659545619c36894a32c3a8b91609c1df4d9bf /bin/bash
-root@vishal:/home/vishal# source docker-build/install/setup.bash 
-root@vishal:/home/vishal/kafka-producer# cat setup.sh 
+root@vishal:/home/vishal# source docker-build/install/setup.bash
+root@vishal:/home/vishal/kafka-producer# cat setup.sh
 apt update && apt install python3.8-venv  telnet -y
 pip3 install -r requirements.txt
 root@vishal:/home/vishal/kafka-producer# ./setup.sh
@@ -112,14 +144,14 @@ Escape character is '^]'.
 Connection closed by foreign host.
 ```
 
-I am able to connect to the kafka container. Now, I need to push data into kafka. 
+I am able to connect to the kafka container. Now, I need to push data into kafka.
 
-2. I need to make sure that my ROS simulation is publishing the data into the topic. Since I have not started a simulation, I won't be able to get any data out. 
+2. I need to make sure that my ROS simulation is publishing the data into the topic. Since I have not started a simulation, I won't be able to get any data out.
 
 ```sh
 root@vishal:/home/vishal# rostopic list
 ERROR: Unable to communicate with master!
-root@vishal:/home/vishal/kafka-producer# python3 kafka_producer.py 
+root@vishal:/home/vishal/kafka-producer# python3 kafka_producer.py
 Hostname: vishal
 IP Address: 10.0.0.82
 Unable to register with master node [http://localhost:11311]: master may not be running yet. Will keep trying.
@@ -191,7 +223,7 @@ if __name__ == "__main__":
 ```sh
 root@vishal:/home/vishal/kafka-producer# rostopic list | wc -l
 337
-root@vishal:/home/vishal/kafka-producer# python3 kafka_producer.py 
+root@vishal:/home/vishal/kafka-producer# python3 kafka_producer.py
 Hostname: vishal
 IP Address: 10.0.0.82
 Producing message 2024-10-16 11:56:56.568391 | Message:
@@ -237,9 +269,8 @@ root@vishal:/home/vishal/kafka-producer# kafkacat -C -b 10.0.0.82:9092 -t my-top
 
 Awesome! I am getting somewhere. Since I am publishing to a topic called `my-topic`, I am getting the data stored in kafka. Time to clean-up and use `quixstreams`! I have been wanting to learn this for a while.
 
-4. Drop the `kafka-producer/producer.py` and `kafka-producer/helper.py` files in the docker container running ROS. 
-
-5. Setup a consumer. 
+4. Drop the `kafka-producer/producer.py` and `kafka-producer/helper.py` files in the docker container running ROS.
 
 
 
+5. Setup a consumer.
