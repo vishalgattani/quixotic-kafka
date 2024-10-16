@@ -397,3 +397,14 @@ cqlsh> select * from ros.odometry;
  35314 | 0.99267 | 0.01292 | 0.03105 | -0.11611 |     0 |     0 |     0
  35307 | 0.99267 | 0.01286 | 0.03107 | -0.11609 |     0 |     0 |     0
 ```
+
+
+# Notes
+
+Edit `bashrc` file to add the following:
+
+```sh
+export SPARK_HOME=/opt/spark/spark-3.5.3-bin-hadoop3/
+export PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin
+export PYSPARK_PYTHON=python3
+```
