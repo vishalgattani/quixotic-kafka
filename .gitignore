@@ -178,3 +178,6 @@ compose.local.yaml
 .secrets
 .venv/
 certificates/
+
+**/*.tgz*
+**/*tar*

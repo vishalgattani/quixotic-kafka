@@ -269,8 +269,131 @@ root@vishal:/home/vishal/kafka-producer# kafkacat -C -b 10.0.0.82:9092 -t my-top
 
 Awesome! I am getting somewhere. Since I am publishing to a topic called `my-topic`, I am getting the data stored in kafka. Time to clean-up and use `quixstreams`! I have been wanting to learn this for a while.
 
-4. Drop the `kafka-producer/producer.py` and `kafka-producer/helper.py` files in the docker container running ROS.
+4. Drop the `kafka-producer/producer.py` and `kafka-producer/helper.py` files in the docker container running ROS. Run the kafka producer script to start publishing to kafka. Once we have messages in kafka, we can setup a consumer to check if the data is getting pushed to kafka.
 
+5. Optional: Setup a consumer and check if the data is getting pushed to kafka.
 
+```sh
+kafkacat -C -b localhost:19092 -t <topic_name>
+```
 
-5. Setup a consumer.
+6. Preparing Apache Cassandra for use case: Initially, we must create a keyspace and then a topic in it using the given command.
+
+```sh
+# Open the cqlsh and then run the command to create 'ros' keyspace
+cqlsh> CREATE KEYSPACE ros WITH replication = {'class':'SimpleStrategy', 'replication_factor' : 1};
+# Then, run the command to create 'odometry' topic in 'ros'
+cqlsh> create table ros.odometry(
+        id int primary key,
+        posex float,
+        posey float,
+        posez float,
+        orientx float,
+        orienty float,
+        orientz float,
+        orientw float);
+# Check your setup is correct
+cqlsh> DESCRIBE ros
+#and
+cqlsh> DESCRIBE ros.odometry
+```
+
+7. Prepare Apache Spark structured streaming pipeline: Now we setup a spark job to read the data from kafka and write it to cassandra. The following script will read odometry topic from Kafka, (may or may not analyze it) and then writes results to Cassandra.
+  - Create a schema the same as we already defined in Cassandra.
+    ```sh
+    odometrySchema = StructType([
+                  StructField("id",IntegerType(),False),
+                  StructField("posex",FloatType(),False),
+                  StructField("posey",FloatType(),False),
+                  StructField("posez",FloatType(),False),
+                  StructField("orientx",FloatType(),False),
+                  StructField("orienty",FloatType(),False),
+                  StructField("orientz",FloatType(),False),
+                  StructField("orientw",FloatType(),False)
+              ])
+    ```
+  - create a Spark Session using two packages:
+    - spark-cassandra-connector: `com.datastax.spark:spark-cassandra-connector_2.12:3.5.1`
+    - spark-sql-kafka-0-10: `org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3`
+      ```sh
+      spark = SparkSession \
+        .builder \
+        .appName("SparkStructuredStreaming") \
+        .config("spark.jars.packages", "com.datastax.spark:spark-cassandra-connector_2.12:3.5.1,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3") \
+        .getOrCreate()
+      ```
+  - To read Kafka stream, we use readStream() and specify Kafka configurations as the given below:
+    ```sh
+    df = spark \
+      .readStream \
+      .format("kafka") \
+      .option("kafka.bootstrap.servers", "localhost:9092") \
+      .option("subscribe", "odometry") \
+      .option("delimeter",",") \
+      .option("startingOffsets", "latest") \
+      .load()
+    ```
+  - Since Kafka sends data as binary, first we need to convert the binary value to String using selectExpr() as the given below:
+    ```sh
+    df1 = df.selectExpr("CAST(value AS STRING)")\
+    .select(from_json(col("value"),odometrySchema)\
+    .alias("data"))\
+    .select("data.*")
+
+    df1.printSchema()
+    ```
+  - Apache Spark isn’t capable of directly write stream data to Cassandra yet (using writeStream()), we can do it with use foreachBatch() as the given below:
+    ```sh
+    def writeToCassandra(writeDF, _):
+      writeDF.write \
+        .format("org.apache.spark.sql.cassandra")\
+        .mode('append')\
+        .options(table="odometry", keyspace="ros")\
+        .save()
+    df1.writeStream \
+        .option("spark.cassandra.connection.host","localhost:9042")\
+        .foreachBatch(writeToCassandra) \
+        .outputMode("update") \
+        .start()\
+        .awaitTermination()
+    ```
+
+```sh
+python3 kafka2cassandra.py
+```
+
+Now we have our data being pushed into Cassandra.
+
+8. We can check if the data is getting pushed into Cassandra by running the following command:
+
+```sh
+cqlsh> select * from ros.odometry;
+(24 rows)
+ id    | orientw | orientx | orienty | orientz  | posex | posey | posez
+-------+---------+---------+---------+----------+-------+-------+-------
+ 35312 | 0.99267 | 0.01283 | 0.03107 |  -0.1161 |     0 |     0 |     0
+ 35304 | 0.99267 | 0.01292 | 0.03106 | -0.11609 |     0 |     0 |     0
+ 35316 | 0.99267 | 0.01286 | 0.03106 | -0.11612 |     0 |     0 |     0
+ 35310 | 0.99267 | 0.01293 | 0.03106 |  -0.1161 |     0 |     0 |     0
+ 35319 | 0.99267 | 0.01279 | 0.03107 | -0.11612 |     0 |     0 |     0
+ 35305 | 0.99267 | 0.01293 | 0.03106 | -0.11609 |     0 |     0 |     0
+ 35315 | 0.99267 |  0.0128 | 0.03107 |  -0.1161 |     0 |     0 |     0
+ 35317 | 0.99267 | 0.01285 | 0.03106 | -0.11612 |     0 |     0 |     0
+ 35318 | 0.99267 | 0.01286 | 0.03106 | -0.11611 |     0 |     0 |     0
+ 35309 | 0.99267 | 0.01286 | 0.03107 | -0.11609 |     0 |     0 |     0
+ 35322 | 0.99266 | 0.01291 | 0.03105 | -0.11613 |     0 |     0 |     0
+ 35313 | 0.99267 |  0.0129 | 0.03106 | -0.11611 |     0 |     0 |     0
+ 35321 | 0.99267 | 0.01284 | 0.03106 | -0.11613 |     0 |     0 |     0
+ 35299 | 0.99267 | 0.01287 | 0.03107 | -0.11607 |     0 |     0 |     0
+ 35320 | 0.99267 | 0.01286 | 0.03106 | -0.11613 |     0 |     0 |     0
+ 35301 | 0.99267 |  0.0128 | 0.03108 | -0.11607 |     0 |     0 |     0
+ 35306 | 0.99267 | 0.01281 | 0.03107 | -0.11608 |     0 |     0 |     0
+ 35323 | 0.99266 | 0.01292 | 0.03105 | -0.11613 |     0 |     0 |     0
+ 35300 | 0.99267 | 0.01288 | 0.03107 | -0.11607 |     0 |     0 |     0
+ 35303 | 0.99267 | 0.01285 | 0.03107 | -0.11608 |     0 |     0 |     0
+ 35302 | 0.99267 | 0.01287 | 0.03107 | -0.11608 |     0 |     0 |     0
+ 35308 | 0.99267 |  0.0129 | 0.03106 |  -0.1161 |     0 |     0 |     0
+ 35311 | 0.99267 | 0.01287 | 0.03106 |  -0.1161 |     0 |     0 |     0
+ 35314 | 0.99267 | 0.01292 | 0.03105 | -0.11611 |     0 |     0 |     0
+ 35307 | 0.99267 | 0.01286 | 0.03107 | -0.11609 |     0 |     0 |     0
+```
