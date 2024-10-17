@@ -14,13 +14,17 @@ flowchart LR
     end
 
     subgraph Structured Streaming
-        kafka(Kafka) --> spark(Spark) --> cass(Cassandra)
+        kafka(Kafka) --> spark(Spark)
+        spark --> cass(Cassandra)
+        kafka -. Streaming<br>DataFrames<br>(WIP) .-> cass
     end
 
     ros --> kafka
 ```
 
 Also, it would be fun to setup a structured streaming pipeline without having to deal with unnecessary headers involved with ROS simulation.
+
+Another addition would be to use `quixstreams` to setup a streaming pipeline without having to switch the implementation downstream to Spark and bypass it. Essentially, directly utilising Quix Streams' consumer's Streaming DataFrames should enable to solve most of your transformation needs as well as easily sink to Cassandra. A work that is currently in progress.
 
 # Setup
 
